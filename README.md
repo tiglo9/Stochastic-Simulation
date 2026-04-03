@@ -20,7 +20,10 @@ des_library/
 ├── __init__.py
 ├── core.py           # Simulation engine and Event base class
 ├── statistics.py     # TimeWeightedStatistic, SampleStatistic, Counter
-└── distributions.py  # Deterministic, Exponential, Erlang, Uniform, Normal, Sequence
+├── distributions.py  # Deterministic, Exponential, Erlang, Uniform, Normal, Sequence
+└── examples/
+    ├── mm1.py        # M/M/1 example
+    └── mg1ps.py      # M/G/1 Processor Sharing example
 ```
 
 ## Core API
@@ -144,12 +147,10 @@ sim.run()
 4. Run simulation until target horizon/condition
 5. Report metrics from statistics collectors
 
-## Current Usage in This Repository
-
-This library is used by:
-- `Solutions_Stochastic_Assignments/assignment1_order_book.py`
-- `Solutions_Stochastic_Assignments/assignment2_bitcoin_mempool.py`
-- `Solutions_Stochastic_Assignments/assignment3_ev_charging.py`
+## Examples
+Reference examples are also included in:
+- `des_library/examples/mm1.py`
+- `des_library/examples/mg1ps.py`
 
 ## Notes
 
