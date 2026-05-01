@@ -78,6 +78,7 @@ class Simulation:
         """Insert *event* into the event list and return it."""
         self._event_counter += 1
         event._seq = self._event_counter
+
         heapq.heappush(self._event_list, event)
         return event
 
