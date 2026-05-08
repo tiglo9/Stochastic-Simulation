@@ -134,7 +134,7 @@ if __name__ == "__main__":
     stats = Statistics()
     mempool = Mempool(stats)
     mempool.set_simulation(sim)
-    sim.schedule(TransactionArrival(0, 0, mempool))
+    sim.schedule(TransactionArrival(1, 0, mempool))
     sim.schedule(BlockMiningEvent(600, mempool))
     sim.run()
     print("average mempool size:", stats.avg_mempool_size.mean(sim.current_time))
