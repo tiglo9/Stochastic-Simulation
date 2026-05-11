@@ -3,6 +3,8 @@ from math import pi, sin, cos, e
 from random import random, seed
 from statistics import *
 
+seed(67)
+
 
 class MatchingEngine:
     def __init__(self, sim):
@@ -27,7 +29,6 @@ class MatchingEngine:
             self.stats.bid_ask_spread.append((time, self.get_ask().price - self.get_bid().price))
 
         self.stats.ask_length.update(time, len(self.askq))
-
 
     def get_bid(self):
         return (max(self.bidq, key=lambda x: x.price))
@@ -55,6 +56,7 @@ class MatchingEngine:
 
     def handle_market_order(self, time):
         if random() > .5:
+                                                        # 'Vo
             # Case sell
             if len(self.bidq) == 0:
                 return
@@ -150,7 +152,7 @@ class OrderArrival(Event):
             # Case limit order
             bid = random() < .5  # 50% chance for bid/ask
             limit_price = round(100 + 2 * sin(self.n * e), 2)
-            tau = self.time  + 30 * (1 + cos(self.n) ** 2)
+            tau = self.time + 30 * (1 + cos(self.n) ** 2)
             limit_order = LimitOrder(limit_price, bid, self.time)
             cancel_event = CancelEvent(tau, limit_order, self.mengine)
             limit_order.set_cancel_event(cancel_event)
@@ -175,6 +177,7 @@ class Statistics:
         self.matched = 0
         self.bid_length = TimeWeightedStatistic()
         self.ask_length = TimeWeightedStatistic()
+
     def avg_bid_ask_spread(self, time):
         last_t = 0
         last_v = 0
@@ -189,7 +192,7 @@ class Statistics:
         if last_v is not None:
             total_t += time - last_t
             total_v += (time - last_t) * last_v
-        return total_v/total_t
+        return total_v / total_t
 
     def print_stats(self, time):
         print(f"the time-avg bid-ask spread is {self.avg_bid_ask_spread(time)}")
