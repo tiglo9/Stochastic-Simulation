@@ -96,7 +96,7 @@ class MatchingEngine:
         else:
             self.stats.bid_ask_spread.append((time, None))
         self.n_trades += 1
-        if self.n_trades >= 50000:
+        if self.n_trades >= 500:
             self.sim.stop()
 
 
