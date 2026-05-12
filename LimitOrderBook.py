@@ -2,9 +2,7 @@ from core import *
 from math import pi, sin, cos, e
 from random import random, seed
 from statistics import *
-
 seed(67)
-
 
 class MatchingEngine:
     def __init__(self, sim):
@@ -98,7 +96,7 @@ class MatchingEngine:
         else:
             self.stats.bid_ask_spread.append((time, None))
         self.n_trades += 1
-        if self.n_trades >= 500:
+        if self.n_trades >= 50000:
             self.sim.stop()
 
 
