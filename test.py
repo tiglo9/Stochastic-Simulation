@@ -1,7 +1,6 @@
 from numpy.random import exponential
 from numpy import std, sqrt
 import matplotlib.pyplot as plt
-import scipy
 
 from core import *
 from math import pi, sin, cos, e
@@ -9,20 +8,19 @@ from numpy import random
 import numpy as np
 from statistics import *
 
-regenerative = False
-v_1 = False
-v_2 = False
-if v_2:
-    v_1 = True
+v_1 = True
 
 class Book:
     def __init__(self, sim: Simulation):
         self.m = 100
 
+        self.mu = 1
+        self.l = 0.5
+        self.total = self.mu+self.l
 
         self.lambda_0 = 5
         self.lambda_min =0.5
-        self.alpha = 0.05
+        self.alpha = 0.0
         self.q_limit = 0.7
         self.v_bar = 10
         self.delta_bar = 0.5
@@ -30,36 +28,20 @@ class Book:
         self.m_star = 100
         self.delta_max = 5
         self.kappa = 0.1
-        self.eta = 0.02
-        self.arrival_rate = self.lambda_0 * np.exp(-self.alpha * (self.m - self.m_star) ** 2) + self.lambda_min
+        self.eta = 0.1
+        self.arrival_rate = self.total
 
         self.stats_archive = []
-        self.stats = Statistics(sim.current_time)
+        self.stats = Statistics()
         self.last_batch_end = 0
         self.sim = sim
         self.next_arrival = None
         self.bidq = []
         self.askq = []
         self.n_batches = 0
-        self.max_batches = 50
-        self.warm_up_time = 180
-        self.batch_length = 4*self.warm_up_time
 
         self.nr_trades = 0
         self.warmed_up = False
-
-        self.l = 0
-        self.mu = 0
-        global v_1
-        global v_2
-        if v_1:
-            self.alpha = 0
-            self.eta = 0
-            self.l = 0.5
-            self.mu = 1
-            self.arrival_rate = self.l + self.mu
-            if v_2:
-                self.arrival_rate = 0.5
 
     def get_bid(self):
         return max(self.bidq, key=lambda o: (o.price, -o.time))
@@ -69,18 +51,11 @@ class Book:
 
     def add_order(self, order):
         if len(self.askq) == 0 and len(self.bidq) == 0:
-            pass#print('empty book')
-
+            print('empty book')
         if order.bid:
             self.bidq.append(order)
         else:
             self.askq.append(order)
-        if len(self.bidq) == 1:
-            global v_1, v2
-            if v_1:
-                self.stats.waiting_times.record(0)
-                if v_2:
-                    self.sim.schedule(V2Service(self.sim.current_time + 1 / self.mu, self, self.bidq[0]))
         self.record_ba_spread()
 
 
@@ -94,9 +69,6 @@ class Book:
         else:
             if len(self.bidq) != 0:
                 self.execute_trade(self.get_bid(), False, -1)
-                global v_1
-                if v_1 and self.bidq:
-                    self.stats.waiting_times.record(self.sim.current_time - self.bidq[0].time)
             else:
                 self.stats.rejected_market_orders += 1
 
@@ -109,14 +81,7 @@ class Book:
         self.update_arrival_rate()
 
     def update_arrival_rate(self):
-        global v_1
-        if v_1:
-            return
-        self.arrival_rate = self.lambda_0 * np.exp(-self.alpha*(self.m-self.m_star)**2) + self.lambda_min
-        self.sim.cancel(self.next_arrival)
-        self.next_arrival.schedule_next(self.sim)
-        self.stats.arrival_rate_ts[0].append(self.sim.current_time)
-        self.stats.arrival_rate_ts[1].append(self.arrival_rate)
+        self.arrival_rate = self.total
 
     def match(self, order):
         if order.bid:
@@ -134,7 +99,6 @@ class Book:
             else:
                 return
     def execute_trade(self, buy, sell, dir):
-        global regenerative
         if sell:
             self.askq.remove(sell)
             self.sim.cancel(sell.cancel_event)
@@ -146,25 +110,18 @@ class Book:
             self.stats.accepted_limit_orders += 1
             self.stats.time_to_fill.record(self.sim.current_time - buy.time)
         self.nr_trades += 1
-        if self.warmed_up == False and self.sim.current_time >= self.warm_up_time and not regenerative:
+        if self.warmed_up == False and self.nr_trades >= 0:
             self.warmed_up = True
-            self.stats=Statistics(sim.current_time)
-            self.last_batch_end = self.sim.current_time
-        if self.sim.current_time > self.warm_up_time and self.sim.current_time - self.last_batch_end >= self.batch_length and not regenerative:
+            self.stats=Statistics()
+            self.last_batch_end = self.nr_trades
+        if self.nr_trades > 5 and self.nr_trades - self.last_batch_end >= 5000:
             print(self.stats.return_stats(self.sim.current_time))
-            self.stats_archive.append(self.stats.return_stats(self.sim.current_time))
-            self.stats = Statistics(sim.current_time)
-            self.last_batch_end = self.sim.current_time
+            self.stats_archive.append(self.stats.return_stats(sim.current_time))
+            self.stats = Statistics()
+            self.last_batch_end = self.nr_trades
             self.n_batches += 1
-        if regenerative and self.sim.current_time != 0:
-            if not self.bidq and not self.askq:
-                if abs(self.m - self.m_star) < 2.5:
-                    print('cycle!')
-                    self.stats_archive.append(self.stats.return_stats(sim.current_time))
-                    print(self.stats.return_stats(self.sim.current_time)["vol"])
-                    self.stats = Statistics(sim.current_time)
-                    self.n_batches += 1
-        if self.n_batches >= self.max_batches:
+        if self.n_batches >= 1:
+            print(self.stats_archive)
             sim.stop()
         self.price_process(dir * exponential(self.v_bar))
         self.record_ba_spread()
@@ -196,15 +153,12 @@ class CancelEvent(Event):
         self.book = book
         self.order = order
     def execute(self, sim: "Simulation") -> None:
-        global v_1
-        if v_1:
-            return
+        return
         self.book.stats.cancelled_limit_orders += 1
         if self.order.bid:
             self.book.bidq.remove(self.order)
         else:
             self.book.askq.remove(self.order)
-        self.book.record_ba_spread()
 
 class OrderArrival(Event):
     def __init__(self, time, book):
@@ -213,24 +167,17 @@ class OrderArrival(Event):
         self._seq: int = 0  # set by Simulation.schedule()
         self.book = book
 
-
     def execute(self, sim: "Simulation") -> None:
-        global v_1
-        self.schedule_next(sim)
-        if (random.random() < self.book.q_limit and not v_1) or (random.random() < self.book.l / self.book.arrival_rate and v_1) or v_2:
+        if random.random() < self.book.l/self.book.total:
             # Arrival is a limit order
             delta_n = random.exponential(self.book.delta_bar)
-            is_bid = random.random() < 0.5
-            if v_1:
-                is_bid = True
+            is_bid = True
             if is_bid:
                 # Arrival is a bid limit order
                 price = self.book.m - delta_n
-                if v_1:
-                    price = 100
-
                 if price <= 0:
                     # Order rejected as invalid
+                    self.schedule_next(sim)
                     return
             else:
                 # Arrival is an ask limit order
@@ -247,34 +194,15 @@ class OrderArrival(Event):
 
         else:
             # Arrival is a market order
-            is_buy = random.random() < 0.5
-            if v_1:
-                is_buy = False
+            is_buy = False
             self.book.process_market_order(is_buy)
+        self.schedule_next(sim)
 
     def schedule_next(self, sim):
         time = sim.current_time + exponential(1/self.book.arrival_rate)
         next_arrival = OrderArrival(time, self.book)
         sim.schedule(next_arrival)
         self.book.next_arrival=next_arrival
-
-class V2Service(Event):
-    def __init__(self, time, book, order):
-        self.time: float = time
-        self.cancelled: bool = False
-        self._seq: int = 0  # set by Simulation.schedule()
-        self.book = book
-        self.order = order
-
-    def execute(self, sim: "Simulation") -> None:
-        self.book.bidq.remove(self.order)
-        self.book.nr_trades += 1
-        if self.book.nr_trades > 50000:
-            print(self.book.stats.waiting_times.mean())
-            sim.stop()
-        if self.book.bidq:
-            sim.schedule(V2Service(sim.current_time+1/self.book.mu, self.book, self.book.bidq[0]))
-            self.book.stats.waiting_times.record(sim.current_time-self.book.bidq[0].time)
 
 class SampleMarketVolitility(Event):
     def __init__(self, time, book):
@@ -287,11 +215,9 @@ class SampleMarketVolitility(Event):
         book.stats.price.append(self.book.m)
 
 class Statistics:
-    def __init__(self, time):
-        self.start_time = time
+    def __init__(self):
         self.bid_ask_spread = []
         self.time_to_fill = SampleStatistic()
-        self.waiting_times = SampleStatistic()
         self.cancelled_limit_orders = 0
         self.accepted_limit_orders = 0
         self.price = []
@@ -319,12 +245,8 @@ class Statistics:
         result = {}
         result["ta b-a spread"] = self.avg_bid_ask_spread(time)
         result["ttf"] = self.time_to_fill.mean()
-        global v_1
-        if v_1:
-            result["Wq"] = self.waiting_times.mean()
-        result["cr"] = self.cancelled_limit_orders / (time-self.start_time)
-        result["rr"] = self.rejected_market_orders / (time-self.start_time)
-
+        result["cr"] = self.cancelled_limit_orders / time
+        result["rr"] = self.rejected_market_orders / time
 
         log_returns = []
         prices = self.price
@@ -336,8 +258,6 @@ class Statistics:
         result["vol"] = vol
 
         plt.plot(self.arrival_rate_ts[0],self.arrival_rate_ts[1])
-        plt.xlabel("Time")
-        plt.ylabel("Arrival rate")
         #plt.show()
         return result
 
@@ -353,26 +273,11 @@ if __name__ == "__main__":
     sim.run()
 
     ba_spreads = [stats["ta b-a spread"] for stats in book.stats_archive]
-    ttf = [stats["ttf"] for stats in book.stats_archive]
+    ttfs = [stats["ttf"] for stats in book.stats_archive]
     crs = [stats["cr"] for stats in book.stats_archive]
     rrs = [stats["rr"] for stats in book.stats_archive]
-    vol = [stats["vol"] for stats in book.stats_archive]
-    def calculate_r(l):
-        if v_2:
-            return
-        r = len(l)
-        delta = 0.05
-        t = scipy.stats.t.ppf(1 - 0.05/2, r - 1)
-        print('is it true?')
-        print(r >= t**2 * np.std(l, ddof=1)**2/(delta/(1+delta)*sum(l)/r)**2)
 
-    calculate_r(rrs)
-    if not v_2:
-        print(f"the time-averaged bid-ask spread is {sum(ba_spreads)/len(ba_spreads)} with 95% CI ({sum(ba_spreads)/len(ba_spreads)-1.96*std(ba_spreads, ddof=1)/sqrt(len(ba_spreads))},{sum(ba_spreads)/len(ba_spreads)+1.96*std(ba_spreads, ddof=1)/sqrt(len(ba_spreads))})")
-        print(f"the average time to fill is {sum(ttf) / len(ttf)} with 95% CI ({sum(ttf) / len(ttf) - 1.96 * std(ttf, ddof=1) / sqrt(len(ttf))},{sum(ttf) / len(ttf) + 1.96 * std(ttf, ddof=1) / sqrt(len(ttf))})")
-        print(f"the average cancellation rate is {sum(crs)/len(crs)} with 95% CI ({sum(crs)/len(crs)-1.96*std(crs, ddof=1)/sqrt(len(crs))},{sum(crs)/len(crs)+1.96*std(crs, ddof=1)/sqrt(len(crs))})")
-        print(f"the average rejection rate is {sum(rrs) / len(rrs)} with 95% CI ({sum(rrs) / len(rrs) - 1.96 * std(rrs, ddof=1) / sqrt(len(rrs))},{sum(rrs) / len(rrs) + 1.96 * std(rrs, ddof=1) / sqrt(len(rrs))})")
-        print(f"the average volatility is {sum(vol)/len(vol)}")
-    if v_1:
-        wq = [stats["Wq"] for stats in book.stats_archive]
-        print(sum(wq)/len(wq))
+    #print(f"the time-averaged bid-ask spread is {sum(ba_spreads)/len(ba_spreads)} with 95% CI ({sum(ba_spreads)/len(ba_spreads)-1.96*std(ba_spreads, ddof=1)/sqrt(len(ba_spreads))},{sum(ba_spreads)/len(ba_spreads)+1.96*std(ba_spreads, ddof=1)/sqrt(len(ba_spreads))})")
+    print(f"the average cancellation rate is {sum(crs)/len(crs)} with 95% CI ({sum(crs)/len(crs)-1.96*std(crs, ddof=1)/sqrt(len(crs))},{sum(crs)/len(crs)+1.96*std(crs, ddof=1)/sqrt(len(crs))})")
+    print(
+        f"the average rejection rate is {sum(rrs) / len(rrs)} with 95% CI ({sum(rrs) / len(rrs) - 1.96 * std(rrs, ddof=1) / sqrt(len(rrs))},{sum(rrs) / len(rrs) + 1.96 * std(rrs, ddof=1) / sqrt(len(rrs))})")
