@@ -343,6 +343,8 @@ class Statistics:
 
 
 if __name__ == "__main__":
+    #there are some settings at the top of the file
+
     sim = Simulation()
     book = Book(sim)
     arrival = OrderArrival(0, book)
@@ -366,7 +368,7 @@ if __name__ == "__main__":
         print('is it true?')
         print(r >= t**2 * np.std(l, ddof=1)**2/(delta/(1+delta)*sum(l)/r)**2)
 
-    calculate_r(rrs)
+    #calculate_r(rrs)
     if not v_2:
         print(f"the time-averaged bid-ask spread is {sum(ba_spreads)/len(ba_spreads)} with 95% CI ({sum(ba_spreads)/len(ba_spreads)-1.96*std(ba_spreads, ddof=1)/sqrt(len(ba_spreads))},{sum(ba_spreads)/len(ba_spreads)+1.96*std(ba_spreads, ddof=1)/sqrt(len(ba_spreads))})")
         print(f"the average time to fill is {sum(ttf) / len(ttf)} with 95% CI ({sum(ttf) / len(ttf) - 1.96 * std(ttf, ddof=1) / sqrt(len(ttf))},{sum(ttf) / len(ttf) + 1.96 * std(ttf, ddof=1) / sqrt(len(ttf))})")
