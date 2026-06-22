@@ -1,8 +1,10 @@
 from numpy.random import uniform, exponential
 from numpy import sin, pi, std, sqrt
-from statistics import TimeWeightedStatistic, SampleStatistic
+from statistics import SampleStatistic
 from core import Simulation, Event
+import scipy
 
+v_1 = False
 
 class SimInfo:
     def __init__(self, sim, stats):
@@ -55,8 +57,8 @@ class SimInfo:
         self.stats.enter_waiting_room(len(self.EmWaitingRoom + self.InOutWaitingRoom) >= 3)
         # if self.stats.batch.total_patients > 200:
         #     self.stats.new_batch()
-
-        if (IsWorkingHours(self.sim.current_time) and self.busyScanners == 1) or self.busyScanners == 0:
+        global v_1
+        if (IsWorkingHours(self.sim.current_time) and ((not v_1 and self.busyScanners < 2 )or self.busyScanners == 0)) or self.busyScanners == 0:
 
             self.start_scan(patient)
         elif patient.type == "em":
@@ -80,13 +82,18 @@ class SimInfo:
                 self.sim.schedule(arrival)
         duration = ScanDuration()
         self.sim.schedule(EndScan(self.sim.current_time + duration, self, patient))
-        self.stats.ct_used(duration, IsWorkingHours(self.sim.current_time))
+
+        if (duration + self.sim.current_time) %24 > 16:
+            self.stats.ct_used(16-((self.sim.current_time) %24), IsWorkingHours(self.sim.current_time))
+            self.stats.ct_used((duration - (16-(self.sim.current_time) %24)), False)
+        else:
+            self.stats.ct_used(duration, IsWorkingHours(self.sim.current_time))
         self.busyScanners += 1
         # print(f"{self.busyScanners} busy scanners\n")
 
     def end_scan(self, patient):
         self.busyScanners -= 1
-        if IsWorkingHours(self.sim.current_time) or self.busyScanners == 0:
+        if ((not v_1) and (IsWorkingHours(self.sim.current_time) or self.busyScanners == 0)) or self.busyScanners == 0:
             if len(self.EmWaitingRoom) != 0:
                 self.start_scan(self.EmWaitingRoom.pop(0))
             elif len(self.InOutWaitingRoom) != 0:
@@ -288,6 +295,9 @@ def NextWorkDay(time):
 
 
 def ScanDuration():
+    global v_1
+    if v_1:
+        return exponential(14.5) / 60
     return uniform(10, 19) / 60  # time in hours
 
 
@@ -363,51 +373,57 @@ class Stats:
         util = [batch.ct_util_office/office_hours for batch in self.batch_archive]
         print(
             f"the CT utilization during office hours is {sum(util) / len(util)} with 95% CI ({sum(util) / len(util) - 1.96 * std(util, ddof=1) / sqrt(len(util))},{sum(util) / len(util) + 1.96 * std(util, ddof=1) / sqrt(len(util))})")
-        print(f"relative presicion is {relative_precision(util)}\n")
+        (calculate_r(util))
         util = [batch.ct_util_no_office / no_office_hours for batch in self.batch_archive]
         print(
             f"the CT utilization outside office hours is {sum(util) / len(util)} with 95% CI ({sum(util) / len(util) - 1.96 * std(util, ddof=1) / sqrt(len(util))},{sum(util) / len(util) + 1.96 * std(util, ddof=1) / sqrt(len(util))})")
-        print(f"relative presicion is {relative_precision(util)}\n")
+        (calculate_r(util))
         access = [batch.access_time.mean() for batch in self.batch_archive]
         print(
             f"the average access time for outpatients is {sum(access) / len(access)} days with 95% CI ({sum(access) / len(access) - 1.96 * std(access, ddof=1) / sqrt(len(access))},{sum(access) / len(access) + 1.96 * std(access, ddof=1) / sqrt(len(access))})")
-        print(f"relative presicion is {relative_precision(access)}\n")
+        (calculate_r(access))
         em = [batch.waiting_time_em.mean() * 60 for batch in self.batch_archive]
         print(
             f"the average waiting time for emergency patients is {sum(em) / len(em)} minutes with 95% CI ({sum(em) / len(em) - 1.96 * std(em, ddof=1) / sqrt(len(em))},{sum(em) / len(em) + 1.96 * std(em, ddof=1) / sqrt(len(em))})")
-        print(f"relative presicion is {relative_precision(em)}\n")
+        (calculate_r(em))
         out = [batch.waiting_time_out.mean() * 60 for batch in self.batch_archive]
         print(
             f"the average waiting time for outpatients is {sum(out) / len(out)} minutes with 95% CI ({sum(out) / len(out) - 1.96 * std(out, ddof=1) / sqrt(len(out))},{sum(out) / len(out) + 1.96 * std(out, ddof=1) / sqrt(len(out))})")
-        print(f"relative presicion is {relative_precision(out)}\n")
+        (calculate_r(out))
         outside = [batch.patients_outside / batch.total_patients for batch in self.batch_archive]
         print(
             f"the fraction of CT patients that have to wait outside of the waiting room is {sum(outside) / len(outside)} with 95% CI ({sum(outside) / len(outside) - 1.96 * std(outside, ddof=1) / sqrt(len(outside))},{sum(outside) / len(outside) + 1.96 * std(outside, ddof=1) / sqrt(len(outside))})")
-        print(f"relative presicion is {relative_precision(outside)}\n")
-        after16 = [batch.inpatients_not_scanned_before_16 / batch.total_inpatients for batch in self.batch_archive]
-        print(
-            f"the fraction of inpatients that were not scanned the same workday is {sum(after16) / len(after16)} with 95% CI ({sum(after16) / len(after16) - 1.96 * std(after16, ddof=1) / sqrt(len(after16))},{sum(after16) / len(after16) + 1.96 * std(after16, ddof=1) / sqrt(len(after16))})")
-        print(f"relative presicion is {relative_precision(after16)}\n")
+        (calculate_r(outside))
+        global v_1
+        if not v_1:
+            after16 = [batch.inpatients_not_scanned_before_16 / batch.total_inpatients for batch in self.batch_archive]
+            print(
+                f"the fraction of inpatients that were not scanned the same workday is {sum(after16) / len(after16)} with 95% CI ({sum(after16) / len(after16) - 1.96 * std(after16, ddof=1) / sqrt(len(after16))},{sum(after16) / len(after16) + 1.96 * std(after16, ddof=1) / sqrt(len(after16))})")
+            (calculate_r(after16))
 
 def startSimulation():
     sim = Simulation()
     stats = Stats(sim)
     info = SimInfo(sim, stats)
-    InpatientRequest(0, info).schedule_next(sim)
     EmPatientArrival(0, info).schedule_next(sim)
-    OutpatientCall(0, info).schedule_next(sim)
-    CheckSchedule(-1, info).schedule_next(sim)
-    ScheduleOut(-1, info).schedule_next(sim)
+    global v_1
+    if not v_1:
+        InpatientRequest(0, info).schedule_next(sim)
+        OutpatientCall(0, info).schedule_next(sim)
+        CheckSchedule(-1, info).schedule_next(sim)
+        ScheduleOut(-1, info).schedule_next(sim)
     sim.schedule(RefreshBatch(7*24*4, info))
     sim.run()
     stats.print_stats()
     return
 
-def relative_precision(data, z=1.96, ddof=1):
-    mean = sum(data) / len(data)
-    if mean == 0:
-        return float("inf")
-    return (z * std(data, ddof=ddof) / sqrt(len(data))) / mean
+
+def calculate_r(l):
+    r = len(l)
+    delta = 0.1
+    t = scipy.stats.t.ppf(1 - 0.05 / 2, r - 1)
+    print('is it true?')
+    print(r >= t ** 2 * std(l, ddof=1) ** 2 / (delta / (1 + delta) * sum(l) / r) ** 2)
 
 if __name__ == "__main__":
     sim = startSimulation()
